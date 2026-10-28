@@ -14,6 +14,9 @@
 ![electron](https://img.shields.io/badge/Electron-45-47848F)
 ![manage](https://img.shields.io/badge/manage_amneziawg.sh-v6.x-3ddc97)
 
+**Скачать:** [Releases — AmneziaWG-GUI-1.0.0-portable.exe](https://github.com/MikhailBaylov/amneziawg-gui/releases/latest)
+(один файл, установка не требуется).
+
 ## Возможности
 
 - Профили серверов: IP/хост, SSH-порт, пользователь, ключ или пароль,

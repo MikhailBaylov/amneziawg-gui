@@ -1,0 +1,59 @@
+{
+  "name": "amneziawg-gui",
+  "version": "1.0.0",
+  "description": "Portable desktop GUI for bivlked/amneziawg-installer (manage_amneziawg.sh over SSH)",
+  "main": "main.js",
+  "author": "Mikhail Baylov",
+  "license": "MIT",
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MikhailBaylov/amneziawg-gui.git"
+  },
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win portable --x64"
+  },
+  "dependencies": {
+    "qrcode": "1.5.4",
+    "ssh2": "1.17.0"
+  },
+  "devDependencies": {
+    "electron": "45.0.0",
+    "electron-builder": "26.18.0"
+  },
+  "build": {
+    "appId": "ru.local.amneziawg.gui",
+    "productName": "AmneziaWG GUI",
+    "asar": true,
+    "npmRebuild": false,
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "lib/**/*",
+      "renderer/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "AmneziaWG-GUI-${version}-portable.exe",
+      "requestedExecutionLevel": "asInvoker"
+    },
+    "portable": {
+      "artifactName": "AmneziaWG-GUI-${version}-portable.exe",
+      "requestExecutionLevel": "user",
+      "unpackDirName": "AmneziaWG-GUI"
+    }
+  }
+}

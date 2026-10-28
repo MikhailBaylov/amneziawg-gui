@@ -1,0 +1,8 @@
+node_modules/
+dist/
+awg-gui-data/
+*.log
+*.exe
+.env
+.DS_Store
+Thumbs.db

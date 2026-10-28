@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AmneziaWG GUI</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6l7-3z"/>
+            <path d="M9 12l2 2 4-4"/>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <div class="brand-title">AmneziaWG</div>
+          <div class="brand-sub">GUI · portable</div>
+        </div>
+      </div>
+
+      <div class="conn-card" id="connCard">
+        <div class="conn-row">
+          <span class="dot dot-off" id="connDot"></span>
+          <span class="conn-title" id="connTitle">Не подключено</span>
+        </div>
+        <div class="conn-meta" id="connMeta">Выберите профиль сервера</div>
+        <div class="conn-actions">
+          <button class="btn btn-primary btn-sm" id="btnConnToggle">Подключить</button>
+        </div>
+      </div>
+
+      <div class="section-head">
+        <span>Профили</span>
+        <button class="icon-btn" id="btnNewProfile" title="Новый профиль">+</button>
+      </div>
+      <div class="profile-list" id="profileList"></div>
+
+      <div class="sidebar-footer">
+        <button class="btn btn-ghost btn-block" id="btnSettings">
+          <span class="btn-ico">⚙</span> Настройки и безопасность
+        </button>
+        <div class="sidebar-note">Совместимо с bivlked/amneziawg-installer · manage v6.x</div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <nav class="tabs" id="tabs">
+          <button class="tab active" data-tab="overview">Обзор</button>
+          <button class="tab" data-tab="clients">Клиенты</button>
+          <button class="tab" data-tab="server">Сервер</button>
+          <button class="tab" data-tab="maintenance">Обслуживание</button>
+          <button class="tab" data-tab="diagnostics">Диагностика</button>
+          <button class="tab" data-tab="commands">Команды</button>
+          <button class="tab" data-tab="console">Консоль</button>
+          <button class="tab" data-tab="journal">Журнал</button>
+          <button class="tab" data-tab="about">О программе</button>
+        </nav>
+        <div class="top-actions">
+          <span class="server-chip" id="serverChip">offline</span>
+          <button class="icon-btn" id="btnRefreshAll" title="Обновить всё">⟳</button>
+        </div>
+      </header>
+
+      <section class="content">
+        <div class="view active" id="view-overview">
+          <div id="overviewContent"></div>
+        </div>
+
+        <div class="view" id="view-clients">
+          <div class="page-head">
+            <div>
+              <h1>Клиенты</h1>
+              <p class="page-sub">Управление профилями AmneziaWG, QR-коды и конфиги.</p>
+            </div>
+            <div class="page-actions">
+              <button class="btn btn-ghost" id="btnClientsRefresh">Обновить</button>
+              <button class="btn btn-primary" id="btnAddClient">+ Добавить клиента</button>
+            </div>
+          </div>
+          <div class="toolbar">
+            <input class="input search" id="clientSearch" placeholder="Поиск по имени или IP…" />
+            <div class="toolbar-spacer"></div>
+            <label class="check"><input type="checkbox" id="clientsVerbose" /> подробный список</label>
+          </div>
+          <div class="panel table-panel" id="clientsTableWrap">
+            <div class="empty">Подключитесь к серверу, чтобы увидеть клиентов.</div>
+          </div>
+        </div>
+
+        <div class="view" id="view-server">
+          <div class="page-head">
+            <div>
+              <h1>Сервер</h1>
+              <p class="page-sub">Состояние сервиса, конфигурация, журналы и резервные копии.</p>
+            </div>
+            <div class="page-actions">
+              <button class="btn btn-ghost" id="btnServerRefresh">Обновить</button>
+              <button class="btn btn-ghost" id="btnRevealServer">Показать секреты</button>
+            </div>
+          </div>
+          <div id="serverContent">
+            <div class="empty">Подключитесь к серверу, чтобы увидеть настройки.</div>
+          </div>
+        </div>
+
+        <div class="view" id="view-diagnostics">
+          <div class="page-head">
+            <div>
+              <h1>Диагностика</h1>
+              <p class="page-sub">Проверка состояния, self-troubleshooting и сравнение с профилями операторов.</p>
+            </div>
+          </div>
+          <div class="panel diag-controls">
+            <div class="diag-row">
+              <button class="btn btn-primary" id="btnRunCheck">Проверка check</button>
+              <button class="btn btn-ghost" id="btnRunShow">awg show</button>
+              <div class="inline-field">
+                <label for="carrierSelect">Оператор:</label>
+                <select class="input" id="carrierSelect">
+                  <option value="">без сравнения</option>
+                </select>
+              </div>
+              <button class="btn btn-ghost" id="btnRunDiagnose">Диагностика</button>
+              <button class="btn btn-ghost" id="btnClearDiag">Очистить</button>
+            </div>
+            <div class="diag-hint">Команда <code>diagnose</code> проверяет модуль ядра, sysctl и UFW; с профилем оператора — сравнивает параметры обфускации.</div>
+          </div>
+          <div class="panel output-panel">
+            <div class="output-head"><span id="diagStatus">Готово</span><span class="mono" id="diagMeta"></span></div>
+            <pre class="terminal" id="diagOutput">Выберите действие.</pre>
+          </div>
+        </div>
+
+        <div class="view" id="view-commands">
+          <div class="page-head">
+            <div>
+              <h1>Команды</h1>
+              <p class="page-sub">Полный набор команд manage_amneziawg.sh в графическом виде.</p>
+            </div>
+          </div>
+          <div class="command-grid" id="commandCards"></div>
+        </div>
+
+        <div class="view" id="view-console">
+          <div class="page-head">
+            <div>
+              <h1>SSH-консоль</h1>
+              <p class="page-sub">Произвольная команда на сервере. По умолчанию выполняется через sudo.</p>
+            </div>
+          </div>
+          <div class="panel console-panel">
+            <div class="console-input-row">
+              <span class="prompt">$</span>
+              <input class="input mono" id="consoleInput" placeholder="например: awg show; ufw status verbose" autocomplete="off" />
+              <label class="check"><input type="checkbox" id="consoleSudo" checked /> sudo</label>
+              <button class="btn btn-primary" id="btnConsoleRun">Выполнить</button>
+            </div>
+            <div class="console-toolbar">
+              <span class="muted">История: ↑ / ↓</span>
+              <button class="btn btn-ghost btn-sm" id="btnConsoleClear">Очистить</button>
+            </div>
+            <pre class="terminal tall" id="consoleOutput"></pre>
+          </div>
+        </div>
+
+        <div class="view" id="view-journal">
+          <div class="page-head">
+            <div>
+              <h1>Журнал</h1>
+              <p class="page-sub">Действия приложения и ответы сервера. Секреты не записываются.</p>
+            </div>
+            <div class="page-actions">
+              <button class="btn btn-ghost" id="btnJournalClear">Очистить</button>
+              <button class="btn btn-ghost" id="btnOpenData">Папка данных</button>
+            </div>
+          </div>
+          <div class="panel" id="journalList"></div>
+        </div>
+        <div class="view" id="view-maintenance">
+          <div class="page-head">
+            <div>
+              <h1>Обслуживание</h1>
+              <p class="page-sub">Служебные операции: журнал управления и резервные копии.</p>
+            </div>
+            <div class="page-actions">
+              <button class="btn btn-ghost" id="btnMaintRefresh">Обновить</button>
+            </div>
+          </div>
+          <div class="maint-grid">
+            <div class="panel maint-card">
+              <h3 class="panel-title">Журнал управления <span class="sub">manage_amneziawg.log</span></h3>
+              <p class="maint-text">Сюда <code>manage_amneziawg.sh</code> пишет историю команд и служебные сообщения. Очистка удаляет только текст журнала: сервер, клиенты, ключи и конфигурация не затрагиваются.</p>
+              <div class="maint-meta" id="maintLogMeta">—</div>
+              <div class="maint-actions">
+                <button class="btn btn-danger" id="btnClearManageLog" disabled>Очистить лог управления</button>
+              </div>
+            </div>
+            <div class="panel maint-card">
+              <h3 class="panel-title">Резервные копии <span class="sub">/root/awg/backups</span></h3>
+              <p class="maint-text">Скачивание архива на этот компьютер. На сервере ничего не меняется: файл только читается и сохраняется в выбранное место.</p>
+              <div class="field" style="margin:0">
+                <label for="backupSelect">Архив</label>
+                <select class="input" id="backupSelect" disabled>
+                  <option value="">—</option>
+                </select>
+              </div>
+              <div class="maint-meta" id="backupMeta">—</div>
+              <div class="progress hidden" id="backupProgress"><div class="progress-bar" id="backupProgressBar"></div></div>
+              <div class="maint-actions">
+                <button class="btn btn-primary" id="btnDownloadBackup" disabled>Скачать бэкап на ПК</button>
+                <button class="btn btn-ghost" id="btnRefreshBackups" disabled>Обновить список</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="view" id="view-about">
+          <div class="page-head">
+            <div>
+              <h1>О программе</h1>
+              <p class="page-sub">AmneziaWG GUI — portable-клиент управления сервером по SSH.</p>
+            </div>
+          </div>
+          <div class="about-grid">
+            <section class="panel about-hero">
+              <div class="about-logo">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="26" height="26">
+                  <path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6l7-3z"/>
+                  <path d="M9 12l2 2 4-4"/>
+                </svg>
+              </div>
+              <div>
+                <h2>AmneziaWG GUI <span class="badge good" id="aboutVersion">1.0.0</span></h2>
+                <p>Графическая оболочка для Windows, которая управляет уже установленным сервером AmneziaWG по SSH. Серверная часть — проект <b>bivlked/amneziawg-installer</b> и его скрипт <code>manage_amneziawg.sh</code>.</p>
+                <p class="muted">Приложение не устанавливается на сервер, не открывает портов и не хранит приватные ключи в открытом виде.</p>
+              </div>
+            </section>
+
+            <section class="panel about-section">
+              <h3>Совместимость</h3>
+              <p>Приложение подходит <b>только</b> для серверов, установленных проектом <b>bivlked/amneziawg-installer</b> (Ubuntu / Debian, AmneziaWG 2.0 или 3.1). Оно вызывает команды <code>manage_amneziawg.sh</code> и ожидает его JSON-контракт версии 6.x.</p>
+              <ul>
+                <li>Проверено с <code>manage_amneziawg.sh</code> 6.1.1 и AmneziaWG 3.1.</li>
+                <li>Не является форком, официальной частью или заменой amneziawg-installer.</li>
+                <li>Не поддерживает панели других проектов, Docker-развёртывания и ручные конфигурации WireGuard.</li>
+                <li>Автор установщика не поддерживает это приложение и не отвечает за его работу.</li>
+              </ul>
+            </section>
+
+            <section class="panel about-section">
+              <h3>Ссылки на проект bivlked</h3>
+              <div class="about-links">
+                <button class="link-btn" data-ext="https://github.com/bivlked/amneziawg-installer" type="button">GitHub — репозиторий установщика <span class="u">github.com/bivlked</span></button>
+                <button class="link-btn" data-ext="https://bivlked.github.io/amneziawg-installer/ru/" type="button">Сайт проекта (русский) <span class="u">bivlked.github.io</span></button>
+                <button class="link-btn" data-ext="https://github.com/bivlked/amneziawg-installer/releases" type="button">Релизы и версии <span class="u">releases</span></button>
+                <button class="link-btn" data-ext="https://bivlked.github.io/amneziawg-installer/ru/manage/" type="button">Документация по управлению клиентами <span class="u">manage</span></button>
+                <button class="link-btn" data-ext="https://github.com/bivlked/amneziawg-installer/issues" type="button">Issues установщика <span class="u">issues</span></button>
+                <button class="link-btn" data-ext="https://github.com/bivlked/amneziawg-installer/discussions" type="button">Обсуждения <span class="u">discussions</span></button>
+                <button class="link-btn" data-ext="https://github.com/bivlked" type="button">Автор проекта — bivlked <span class="u">github.com/bivlked</span></button>
+                <button class="link-btn" data-ext="https://github.com/bivlked/amneziawg-installer/blob/main/LICENSE" type="button">Лицензия установщика (MIT) <span class="u">LICENSE</span></button>
+              </div>
+            </section>
+
+            <section class="panel about-section">
+              <h3>Обратная связь</h3>
+              <p>Баги и предложения — в Issue проекта.</p>
+              <div class="about-links">
+                <button class="link-btn" id="aboutIssuesBtn" data-ext="https://github.com/MikhailBaylov/amneziawg-gui/issues" type="button">Баги и предложения — в Issue проекта <span class="u" id="aboutIssuesHost">github.com/MikhailBaylov/amneziawg-gui</span></button>
+                <button class="link-btn" data-ext="https://github.com/MikhailBaylov/amneziawg-gui" type="button">Исходный код приложения <span class="u">github.com</span></button>
+              </div>
+            </section>
+
+            <section class="panel about-section">
+              <h3>AI-generated, «как есть» и отказ от ответственности</h3>
+              <p><b>Код приложения создан с помощью искусственного интеллекта (AI-generated)</b> под руководством владельца проекта. Несмотря на тестирование, возможны ошибки, неполная совместимость и побочные эффекты.</p>
+              <p>Программа распространяется <b>«как есть» (AS IS)</b>, без каких-либо гарантий, явных или подразумеваемых, включая гарантии работоспособности, пригодности для конкретной цели и отсутствия ошибок.</p>
+              <p>Вы используете приложение <b>на свой риск</b>. Автор не несёт ответственности за потерю данных, простой сервера, блокировку аккаунтов, нарушение законодательства или иной ущерб, связанный с использованием программы. Перед опасными операциями делайте резервную копию и проверяйте команды.</p>
+              <div class="about-note about-warn">Приложение управляет сервером с правами root. Ошибка в команде или подтверждение опасной операции может изменить конфигурацию и прервать доступ клиентов. Соблюдайте законы вашей юрисдикции.</div>
+            </section>
+
+            <section class="panel about-section">
+              <h3>Технические данные</h3>
+              <div class="about-kv">
+                <div class="k">Версия</div><div class="v" id="aboutVersion2">—</div>
+                <div class="k">Electron</div><div class="v" id="aboutElectron">—</div>
+                <div class="k">Node.js</div><div class="v" id="aboutNode">—</div>
+                <div class="k">Каталог данных</div><div class="v" id="aboutDataDir">—</div>
+                <div class="k">Лицензия</div><div class="v">MIT</div>
+              </div>
+            </section>
+
+            <section class="panel about-section">
+              <h3>Если вы хотите отблагодарить автора</h3>
+              <div class="about-donate">
+                <div style="flex:1;min-width:220px">
+                  <p style="margin:0 0 6px">Добровольная благодарность через CloudTips: банковская карта, сумма от 49 ₽. Регистрация не нужна.</p>
+                  <p class="muted" style="margin:0">Это не оплата поддержки и не гарантия работы — только спасибо за труд.</p>
+                </div>
+                <button class="btn btn-primary" data-ext="https://pay.cloudtips.ru/p/8563aec1" type="button">Поблагодарить</button>
+              </div>
+            </section>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div id="toasts" class="toasts"></div>
+  <div id="modalRoot"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

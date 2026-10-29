@@ -46,6 +46,24 @@ function send(channel, payload) {
   if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
 }
 
+/** Compare dotted versions: >0 when a is newer than b. */
+function compareVersions(a, b) {
+  const parse = (v) => String(v || '')
+    .replace(/^v/i, '')
+    .split(/[.+-]/)
+    .map((x) => parseInt(x, 10))
+    .filter((n) => Number.isFinite(n));
+  const pa = parse(a);
+  const pb = parse(b);
+  const len = Math.max(pa.length, pb.length);
+  for (let i = 0; i < len; i += 1) {
+    const x = pa[i] || 0;
+    const y = pb[i] || 0;
+    if (x !== y) return x > y ? 1 : -1;
+  }
+  return 0;
+}
+
 function appLog(level, text) {
   try { store.log(level, text); } catch (_) { /* ignore */ }
   send('app:log', { level, text, ts: Date.now() });
@@ -445,6 +463,127 @@ function initIpc() {
       return { ok: true, path: res.filePath, size: stat.size };
     } catch (err) {
       appLog('error', `Не удалось скачать бэкап: ${err.message}`);
+      return { ok: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('maintenance:upload-backup', async () => {
+    try {
+      if (!ssh.connected) throw new Error('Нет SSH-соединения.');
+      const pick = await dialog.showOpenDialog(win, {
+        title: 'Загрузить резервную копию на сервер',
+        properties: ['openFile'],
+        filters: [
+          { name: 'Архив AmneziaWG', extensions: ['gz', 'tgz'] },
+          { name: 'Все файлы', extensions: ['*'] },
+        ],
+      });
+      if (pick.canceled || !pick.filePaths || !pick.filePaths.length) return { ok: false, canceled: true };
+      const local = pick.filePaths[0];
+      const base = path.basename(local);
+      if (!/^[A-Za-z0-9._-]+\.(tar\.gz|tgz)$/i.test(base)) {
+        throw new Error('Файл должен быть архивом .tar.gz (имя — только латиница, цифры, точка, дефис).');
+      }
+      const stat = fs.statSync(local);
+      if (!stat.size) throw new Error('Выбран пустой файл.');
+      if (stat.size > 256 * 1024 * 1024) throw new Error('Архив больше 256 МБ — загрузите его вручную (scp).');
+      const fd = fs.openSync(local, 'r');
+      const magic = Buffer.alloc(2);
+      try { fs.readSync(fd, magic, 0, 2, 0); } finally { fs.closeSync(fd); }
+      if (magic[0] !== 0x1f || magic[1] !== 0x8b) throw new Error('Файл не похож на gzip-архив.');
+
+      const remoteDir = `${ssh.profile.awgDir.replace(/\/+$/, '')}/backups`;
+      const remote = `${remoteDir}/${base}`;
+      if (await ssh.fileExists(remote)) throw new Error(`На сервере уже есть файл ${base}. Переименуйте архив и повторите.`);
+
+      await ssh.ensureDir(remoteDir);
+      await ssh.uploadFile(local, remote, ({ transferred, total }) => {
+        send('backup:upload-progress', { name: base, transferred, total });
+      });
+      const remoteSize = await ssh.fileSize(remote);
+      if (!remoteSize) throw new Error('После загрузки файл на сервере пуст или не найден.');
+      appLog('warn', `Бэкап загружен на сервер: ${base} (${remoteSize} байт) → ${remote}.`);
+      return { ok: true, name: base, size: remoteSize, remote };
+    } catch (err) {
+      appLog('error', `Не удалось загрузить бэкап: ${err.message}`);
+      return { ok: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('app:check-updates', async () => {
+    const current = app.getVersion();
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 12000);
+      let res;
+      try {
+        res = await fetch('https://api.github.com/repos/MikhailBaylov/amneziawg-gui/releases/latest', {
+          headers: { 'User-Agent': `AmneziaWG-GUI/${current}`, Accept: 'application/vnd.github+json' },
+          signal: ctrl.signal,
+        });
+      } finally {
+        clearTimeout(timer);
+      }
+      if (!res.ok) throw new Error(`GitHub ответил ${res.status}.`);
+      const data = await res.json();
+      const latest = String(data.tag_name || '').replace(/^v/i, '');
+      const cmp = compareVersions(latest, current);
+      const assets = Array.isArray(data.assets) ? data.assets : [];
+      const exe = assets.find((a) => /\.exe$/i.test(String(a.name || ''))) || null;
+      return {
+        ok: true,
+        current,
+        latest: latest || null,
+        newer: cmp > 0,
+        url: data.html_url || 'https://github.com/MikhailBaylov/amneziawg-gui/releases/latest',
+        assetUrl: exe ? exe.browser_download_url : null,
+        assetName: exe ? exe.name : null,
+        assetSize: exe ? exe.size : null,
+        notes: typeof data.body === 'string' ? data.body.slice(0, 4000) : '',
+        publishedAt: data.published_at || null,
+      };
+    } catch (err) {
+      appLog('warn', `Проверка обновлений не удалась: ${err.message}`);
+      return { ok: false, current, error: err.message };
+    }
+  });
+
+  ipcMain.handle('app:download-update', async (_e, { url, name } = {}) => {
+    try {
+      const u = new URL(String(url || ''));
+      if (u.protocol !== 'https:' || !/^(github\.com|objects\.githubusercontent\.com)$/.test(u.hostname)) {
+        throw new Error('Недопустимая ссылка на обновление.');
+      }
+      const file = path.basename(String(name || ''));
+      if (!/^AmneziaWG-GUI-[0-9][0-9A-Za-z.-]*-portable\.exe$/i.test(file)) {
+        throw new Error('Неожиданное имя файла обновления.');
+      }
+      const target = path.join(app.getPath('downloads'), file);
+      const res = await fetch(u.toString(), { headers: { 'User-Agent': `AmneziaWG-GUI/${app.getVersion()}` } });
+      if (!res.ok || !res.body) throw new Error(`GitHub ответил ${res.status}.`);
+      const total = Number(res.headers.get('content-length')) || 0;
+      const out = fs.createWriteStream(target);
+      let transferred = 0;
+      let last = 0;
+      const { Readable } = require('stream');
+      for await (const chunk of Readable.fromWeb(res.body)) {
+        out.write(chunk);
+        transferred += chunk.length;
+        const now = Date.now();
+        if (now - last > 150) {
+          last = now;
+          send('update:progress', { name: file, transferred, total });
+        }
+      }
+      await new Promise((resolve, reject) => out.end((err) => (err ? reject(err) : resolve())));
+      send('update:progress', { name: file, transferred, total: total || transferred });
+      const size = fs.statSync(target).size;
+      if (!size) throw new Error('Скачанный файл пуст.');
+      appLog('info', `Обновление скачано: ${file} (${size} байт) → ${target}.`);
+      shell.showItemInFolder(target);
+      return { ok: true, path: target, size };
+    } catch (err) {
+      appLog('error', `Не удалось скачать обновление: ${err.message}`);
       return { ok: false, error: err.message };
     }
   });

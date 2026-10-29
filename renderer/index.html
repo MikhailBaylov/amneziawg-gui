@@ -217,6 +217,16 @@
                 <button class="btn btn-ghost" id="btnRefreshBackups" disabled>Обновить список</button>
               </div>
             </div>
+            <div class="panel maint-card">
+              <h3 class="panel-title">Загрузить бэкап на сервер <span class="sub">.tar.gz</span></h3>
+              <p class="maint-text">Отправка готового архива в каталог <code>backups</code> на сервере по SFTP. Существующие файлы не перезаписываются, имя проверяется: только латиница, цифры, точка и дефис.</p>
+              <div class="maint-meta">Куда: <span id="uploadTarget">—</span></div>
+              <div class="maint-meta" id="uploadMeta">Архив не выбран.</div>
+              <div class="progress hidden" id="uploadProgress"><div class="progress-bar" id="uploadProgressBar"></div></div>
+              <div class="maint-actions">
+                <button class="btn btn-primary" id="btnUploadBackup" disabled>Загрузить бэкап на сервер</button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -282,6 +292,21 @@
               <p>Программа распространяется <b>«как есть» (AS IS)</b>, без каких-либо гарантий, явных или подразумеваемых, включая гарантии работоспособности, пригодности для конкретной цели и отсутствия ошибок.</p>
               <p>Вы используете приложение <b>на свой риск</b>. Автор не несёт ответственности за потерю данных, простой сервера, блокировку аккаунтов, нарушение законодательства или иной ущерб, связанный с использованием программы. Перед опасными операциями делайте резервную копию и проверяйте команды.</p>
               <div class="about-note about-warn">Приложение управляет сервером с правами root. Ошибка в команде или подтверждение опасной операции может изменить конфигурацию и прервать доступ клиентов. Соблюдайте законы вашей юрисдикции.</div>
+            </section>
+
+            <section class="panel about-section">
+              <h3>Обновления</h3>
+              <p>Приложение проверяет новые версии на GitHub Releases. Обновление ставится вручную: скачайте новый portable-файл и замените старый — профили и настройки сохраняются в папке данных.</p>
+              <div class="about-kv" style="margin-bottom:10px">
+                <div class="k">Установлено</div><div class="v" id="updateCurrent">—</div>
+                <div class="k">Доступно</div><div class="v" id="updateLatest">—</div>
+              </div>
+              <div class="maint-actions">
+                <button class="btn btn-ghost" id="btnCheckUpdates" type="button">Проверить обновления</button>
+                <button class="btn btn-primary hidden" id="btnDownloadUpdate" type="button">Скачать обновление</button>
+              </div>
+              <div class="progress hidden" id="updateProgress" style="margin-top:10px"><div class="progress-bar" id="updateProgressBar"></div></div>
+              <div class="maint-meta" id="updateMeta" style="margin-top:8px">Проверка ещё не выполнялась.</div>
             </section>
 
             <section class="panel about-section">

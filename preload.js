@@ -39,6 +39,9 @@ contextBridge.exposeInMainWorld('api', {
   backups: () => ipcRenderer.invoke('server:backups'),
   clearManageLog: () => ipcRenderer.invoke('maintenance:clear-log'),
   downloadBackup: (name) => ipcRenderer.invoke('maintenance:download-backup', { name }),
+  uploadBackup: () => ipcRenderer.invoke('maintenance:upload-backup'),
+  checkUpdates: () => ipcRenderer.invoke('app:check-updates'),
+  downloadUpdate: (payload) => ipcRenderer.invoke('app:download-update', payload || {}),
   openExternal: (url) => ipcRenderer.invoke('app:open-external', url),
 
   saveFile: (opts) => ipcRenderer.invoke('file:save', opts),
@@ -49,4 +52,6 @@ contextBridge.exposeInMainWorld('api', {
   onCommandStart: (cb) => subscribe('command:start', cb),
   onCommandEnd: (cb) => subscribe('command:end', cb),
   onBackupProgress: (cb) => subscribe('backup:progress', cb),
+  onUploadProgress: (cb) => subscribe('backup:upload-progress', cb),
+  onUpdateProgress: (cb) => subscribe('update:progress', cb),
 });

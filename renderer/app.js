@@ -54,7 +54,8 @@ const state = {
   tab: 'overview',
   busy: 0,
   diagRunning: false,
-  maintenance: { logInfo: null, backups: [], selected: '' },
+  maintenance: { logInfo: null, backups: [], selected: '', loaded: false, loading: false },
+  update: null,
 };
 
 /* ------------------------------------------------------------------ */
@@ -485,7 +486,7 @@ async function disconnectSession({ quiet = false } = {}) {
   state.stats = [];
   state.server = null;
   state.serverReveal = false;
-  state.maintenance = { logInfo: null, backups: [], selected: '' };
+  state.maintenance = { logInfo: null, backups: [], selected: '', loaded: false, loading: false };
   updateConnCard();
   renderProfiles();
   renderOverview();
@@ -629,6 +630,7 @@ async function refreshAll(manual = false) {
     hideBusy();
   }
   renderOverview();
+  if (state.tab === 'maintenance') await loadMaintenance();
 }
 
 /* ------------------------------------------------------------------ */
@@ -1932,6 +1934,8 @@ function renderMaintenance() {
   const btnClear = $('#btnClearManageLog');
   const btnDown = $('#btnDownloadBackup');
   const btnRefresh = $('#btnRefreshBackups');
+  const btnUpload = $('#btnUploadBackup');
+  const uploadTarget = $('#uploadTarget');
   if (!logMeta || !sel) return;
 
   if (!connected) {
@@ -1941,17 +1945,24 @@ function renderMaintenance() {
     btnClear.disabled = true;
     btnDown.disabled = true;
     btnRefresh.disabled = true;
+    if (btnUpload) btnUpload.disabled = true;
+    if (uploadTarget) uploadTarget.textContent = '—';
     meta.textContent = 'Подключитесь к серверу, чтобы увидеть архивы.';
     return;
   }
 
   btnRefresh.disabled = false;
   sel.disabled = false;
+  if (btnUpload) btnUpload.disabled = false;
+  if (uploadTarget) uploadTarget.textContent = 'каталог backups рядом с manage_amneziawg.sh';
 
   const li = state.maintenance.logInfo;
   if (li) {
     logMeta.textContent = `${li.name} · ${fmtBytes(li.size)}${li.size ? '' : ' · пуст'}`;
     btnClear.disabled = !li.size;
+  } else if (!state.maintenance.loaded) {
+    logMeta.textContent = 'Загрузка…';
+    btnClear.disabled = true;
   } else {
     logMeta.textContent = 'manage_amneziawg.log не найден';
     btnClear.disabled = true;
@@ -1959,9 +1970,12 @@ function renderMaintenance() {
 
   const backups = state.maintenance.backups || [];
   if (!backups.length) {
-    sel.innerHTML = '<option value="">Бэкапов нет</option>';
+    sel.innerHTML = `<option value="">${state.maintenance.loaded ? 'Бэкапов нет' : 'Загрузка…'}</option>`;
     btnDown.disabled = true;
-    meta.textContent = 'Создайте бэкап в разделе «Сервер» или «Команды».';
+    meta.textContent = state.maintenance.loaded
+      ? 'Создайте бэкап в разделе «Сервер» или «Команды».'
+      : 'Чтение списка архивов…';
+    if (!state.maintenance.loaded) loadMaintenance();
     return;
   }
   sel.innerHTML = backups.map((b) => `<option value="${esc(b.name)}">${esc(b.name)} — ${fmtBytes(b.size)}${b.date ? ` · ${esc(b.date)}` : ''}</option>`).join('');
@@ -1978,17 +1992,32 @@ function renderMaintenance() {
 
 async function loadMaintenance() {
   if (!state.status || !state.status.connected) { renderMaintenance(); return; }
-  const [logsRes, backupsRes] = await Promise.allSettled([api.logs(), api.backups()]);
-  if (logsRes.status === 'fulfilled' && logsRes.value && logsRes.value.ok) {
-    state.maintenance.logInfo = (logsRes.value.logs || []).find((l) => l.name === 'manage_amneziawg.log') || null;
-  }
-  if (backupsRes.status === 'fulfilled' && backupsRes.value && backupsRes.value.ok) {
-    state.maintenance.backups = backupsRes.value.backups || [];
-    if (!state.maintenance.backups.some((b) => b.name === state.maintenance.selected)) {
-      state.maintenance.selected = state.maintenance.backups.length ? state.maintenance.backups[0].name : '';
+  if (state.maintenance.loading) return;
+  state.maintenance.loading = true;
+  let failed = null;
+  try {
+    const [logsRes, backupsRes] = await Promise.allSettled([api.logs(), api.backups()]);
+    if (logsRes.status === 'fulfilled' && logsRes.value && logsRes.value.ok) {
+      state.maintenance.logInfo = (logsRes.value.logs || []).find((l) => l.name === 'manage_amneziawg.log') || null;
+    } else {
+      failed = (logsRes.status === 'fulfilled' && logsRes.value && logsRes.value.error)
+        || 'Не удалось прочитать список журналов.';
     }
+    if (backupsRes.status === 'fulfilled' && backupsRes.value && backupsRes.value.ok) {
+      state.maintenance.backups = backupsRes.value.backups || [];
+      if (!state.maintenance.backups.some((b) => b.name === state.maintenance.selected)) {
+        state.maintenance.selected = state.maintenance.backups.length ? state.maintenance.backups[0].name : '';
+      }
+    } else if (!failed) {
+      failed = (backupsRes.status === 'fulfilled' && backupsRes.value && backupsRes.value.error)
+        || 'Не удалось прочитать список резервных копий.';
+    }
+    state.maintenance.loaded = true;
+  } finally {
+    state.maintenance.loading = false;
   }
   renderMaintenance();
+  if (failed) toast(failed, 'error', 8000);
 }
 
 async function clearManageLog() {
@@ -2038,6 +2067,41 @@ async function downloadBackup() {
   toast(`Бэкап сохранён: ${res.path} (${fmtBytes(res.size)})`, 'success', 10000);
 }
 
+async function uploadBackup() {
+  if (!requireConnection()) return;
+  const ok = await confirmDialog({
+    title: 'Загрузить бэкап на сервер?',
+    text: 'Архив <code>.tar.gz</code> будет отправлен в каталог <code>backups</code> на сервере. Существующие файлы не перезаписываются. Сервер, клиенты и конфигурация не меняются.',
+    confirmLabel: 'Выбрать файл',
+  });
+  if (!ok) return;
+  const bar = $('#uploadProgressBar');
+  const wrap = $('#uploadProgress');
+  const meta = $('#uploadMeta');
+  if (wrap) wrap.classList.remove('hidden');
+  if (bar) bar.style.width = '0%';
+  showBusy('Загрузка архива на сервер…');
+  let res;
+  try {
+    res = await api.uploadBackup();
+  } finally {
+    hideBusy();
+    if (wrap) wrap.classList.add('hidden');
+  }
+  if (res && res.canceled) {
+    if (meta) meta.textContent = 'Архив не выбран.';
+    return;
+  }
+  if (!res || !res.ok) {
+    if (meta) meta.textContent = 'Загрузка не выполнена.';
+    toast((res && res.error) || 'Не удалось загрузить бэкап.', 'error', 9000);
+    return;
+  }
+  if (meta) meta.textContent = `${res.name} · ${fmtBytes(res.size)} · загружен`;
+  toast(`Архив загружен на сервер: ${res.name} (${fmtBytes(res.size)})`, 'success', 10000);
+  await loadMaintenance();
+}
+
 /* ------------------------------------------------------------------ */
 /* About                                                               */
 /* ------------------------------------------------------------------ */
@@ -2048,11 +2112,80 @@ function renderAbout() {
     const el = $(sel);
     if (el) el.textContent = value || '—';
   };
-  set('#aboutVersion', info.version ? `v${info.version}` : 'v1.0.0');
-  set('#aboutVersion2', info.version || '1.0.0');
+  set('#aboutVersion', info.version ? `v${info.version}` : 'v1.1.0');
+  set('#aboutVersion2', info.version || '1.1.0');
   set('#aboutElectron', info.electron);
   set('#aboutNode', info.node);
   set('#aboutDataDir', info.dataDir);
+  set('#updateCurrent', info.version ? `v${info.version}` : '—');
+  const u = state.update;
+  if (u) {
+    set('#updateLatest', u.latest ? `v${u.latest}` : '—');
+    const meta = $('#updateMeta');
+    const btn = $('#btnDownloadUpdate');
+    if (u.ok) {
+      if (u.newer) {
+        if (meta) meta.textContent = `Доступна новая версия v${u.latest}. Скачайте portable-файл и замените текущий.`;
+        if (btn) btn.classList.remove('hidden');
+      } else {
+        if (meta) meta.textContent = `Установлена последняя версия (${u.current}).`;
+        if (btn) btn.classList.add('hidden');
+      }
+    } else {
+      if (meta) meta.textContent = `Не удалось проверить обновления: ${u.error || 'нет связи с GitHub'}.`;
+      if (btn) btn.classList.add('hidden');
+    }
+  }
+}
+
+async function downloadUpdate() {
+  const u = state.update;
+  if (!u || !u.ok) { toast('Сначала проверьте обновления.', 'warn'); return; }
+  if (!u.assetUrl || !u.assetName) {
+    api.openExternal(u.url).then((ok) => { if (!ok) toast('Ссылка заблокирована.', 'warn'); });
+    return;
+  }
+  const wrap = $('#updateProgress');
+  const bar = $('#updateProgressBar');
+  const meta = $('#updateMeta');
+  const btn = $('#btnDownloadUpdate');
+  if (wrap) wrap.classList.remove('hidden');
+  if (bar) bar.style.width = '0%';
+  if (btn) btn.disabled = true;
+  showBusy(`Скачивание ${u.assetName}…`);
+  let res;
+  try {
+    res = await api.downloadUpdate({ url: u.assetUrl, name: u.assetName });
+  } finally {
+    hideBusy();
+    if (wrap) wrap.classList.add('hidden');
+    if (btn) btn.disabled = false;
+  }
+  if (!res || !res.ok) {
+    toast((res && res.error) || 'Не удалось скачать обновление.', 'error', 9000);
+    return;
+  }
+  if (meta) meta.textContent = `Файл сохранён: ${res.path}. Закройте приложение и замените старый exe новым.`;
+  toast(`Обновление скачано: ${res.path}`, 'success', 12000);
+}
+
+async function checkUpdates({ quiet = false } = {}) {
+  const btn = $('#btnCheckUpdates');
+  if (btn) { btn.disabled = true; btn.textContent = 'Проверка…'; }
+  let res;
+  try {
+    res = await api.checkUpdates();
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Проверить обновления'; }
+  }
+  state.update = res || { ok: false, error: 'нет ответа' };
+  renderAbout();
+  if (!res || !res.ok) {
+    if (!quiet) toast(`Не удалось проверить обновления: ${(res && res.error) || 'нет связи'}.`, 'warn', 8000);
+    return;
+  }
+  if (res.newer) toast(`Доступна новая версия v${res.latest}.`, 'info', 9000);
+  else if (!quiet) toast('Установлена последняя версия.', 'success', 5000);
 }
 
 
@@ -2194,6 +2327,9 @@ function bindEvents() {
   $('#btnRefreshBackups').addEventListener('click', () => loadMaintenance());
   $('#btnClearManageLog').addEventListener('click', clearManageLog);
   $('#btnDownloadBackup').addEventListener('click', downloadBackup);
+  $('#btnUploadBackup').addEventListener('click', uploadBackup);
+  $('#btnCheckUpdates').addEventListener('click', () => checkUpdates());
+  $('#btnDownloadUpdate').addEventListener('click', () => downloadUpdate());
   $('#backupSelect').addEventListener('change', () => {
     state.maintenance.selected = $('#backupSelect').value;
     renderMaintenance();
@@ -2211,6 +2347,20 @@ function bindEvents() {
     if (!total) return;
     const pct = Math.max(0, Math.min(100, Math.round((transferred / total) * 100)));
     const bar = $('#backupProgressBar');
+    if (bar) bar.style.width = `${pct}%`;
+  });
+
+  api.onUploadProgress(({ transferred, total }) => {
+    if (!total) return;
+    const pct = Math.max(0, Math.min(100, Math.round((transferred / total) * 100)));
+    const bar = $('#uploadProgressBar');
+    if (bar) bar.style.width = `${pct}%`;
+  });
+
+  api.onUpdateProgress(({ transferred, total }) => {
+    if (!total) return;
+    const pct = Math.max(0, Math.min(100, Math.round((transferred / total) * 100)));
+    const bar = $('#updateProgressBar');
     if (bar) bar.style.width = `${pct}%`;
   });
 
@@ -2261,6 +2411,8 @@ async function init() {
   renderCommandCards();
   renderAbout();
   bindEvents();
+
+  setTimeout(() => { checkUpdates({ quiet: true }); }, 4000);
 
   try {
     const data = await api.listProfiles();
